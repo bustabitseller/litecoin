@@ -1,0 +1,25 @@
+   name: "Remote Deploy CI"
+
+   on:
+     push:
+       branches: [ master ]
+
+   jobs:
+     remote-deploy:
+       runs-on: ubuntu-latest
+       steps:
+         - uses: actions/checkout@v3
+           with: { fetch-depth: 0 }
+
+         - name: Setup SSH key
+           uses: webfactory/ssh-agent@v0.10.0
+           with: { ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }} }
+
+         - name: Run deploy script
+           env:
+             DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+             DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+             GITHUB_REPOSITORY: bustabitseller/litecoin
+           run: |
+             chmod +x deploy.sh
+             ./deploy.sh
