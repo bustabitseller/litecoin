@@ -1,0 +1,55 @@
+name: "Genesis Block CI"
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  update-genesis:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y dos2unix build-essential autoconf automake libtool pkg-config \
+            libssl-dev libevent-dev libboost-system-dev libboost-filesystem-dev \
+            libboost-chrono-dev libboost-test-dev libboost-thread-dev \
+            libzmq3-dev libfmt-dev
+
+      - name: Build and print genesis
+        run: |
+          dos2unix autogen.sh && chmod +x autogen.sh
+          ./autogen.sh
+          ./configure --disable-wallet --enable-debug --with-miniupnpc=no
+          make -j$(nproc)
+          GENESIS=$(./src/halibutcoind --print-genesis)
+          echo "$GENESIS" > genesis.txt
+          TIMESTAMP=$(echo "$GENESIS" \| grep -oP '(?<=nTime=)\d+')
+          NONCE=$(echo "$GENESIS" \| grep -oP '(?<=nNonce=)\d+')
+          NBITS=$(echo "$GENESIS" \| grep -oP '(?<=nBits=)0x[0-9a-fA-F]+')
+          HGB=$(echo "$GENESIS" \| grep -oP '(?<=blockHash=)[0-9a-fA-F]+')
+          HMR=$(echo "$GENESIS" \| grep -oP '(?<=merkleRoot=)[0-9a-fA-F]+')
+          echo "TIMESTAMP=$TIMESTAMP" >> $GITHUB_ENV
+          echo "NONCE=$NONCE" >> $GITHUB_ENV
+          echo "NBITS=$NBITS" >> $GITHUB_ENV
+          echo "HGB=$HGB" >> $GITHUB_ENV
+          echo "HMR=$HMR" >> $GITHUB_ENV
+
+      - name: Update chainparams.cpp
+        run: |
+          sed -i "/CreateGenesisBlock(/c\\        genesis = CreateGenesisBlock($TIMESTAMP, $NONCE, $NBITS, 1, 50 * COIN);" src/chainparams.cpp
+          sed -i "/hashGenesisBlock/c\\        consensus.hashGenesisBlock = uint256S(\"$HGB\");" src/chainparams.cpp
+          sed -i "/hashMerkleRoot/c\\        assert(genesis.hashMerkleRoot == uint256S(\"$HMR\"));" src/chainparams.cpp
+
+      - name: Commit changes
+        run: |
+          git config --local user.name "github-actions"
+          git config --local user.email "actions@github.com"
+          git add src/chainparams.cpp
+          git commit -m "chore: update genesis block parameters"
+          git push origin main
