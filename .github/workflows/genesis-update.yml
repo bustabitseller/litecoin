@@ -2,7 +2,7 @@ name: "Genesis Block CI"
 
 on:
   push:
-    branches: [ master ]
+    branches: [ main ]
 
 jobs:
   update-genesis:
